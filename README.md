@@ -8,7 +8,7 @@ Framework-neutral browser analytics with first-party adapters for React, Vue, an
 
 | Package | Purpose |
 | --- | --- |
-| `@gromosome/insights-core` | Event capture, batching, durable queue, consent, clicks, impressions, dwell, page views and custom events |
+| `@gromosome/insights-core` | Event capture, batching, durable queue, consent, clicks, impressions, dwell, page views, media and arbitrary DOM events |
 | `@gromosome/insights-react` | React provider, hook and tracked component |
 | `@gromosome/insights-vue` | Vue plugin, composable and directive |
 | `@gromosome/insights-angular` | Angular provider, service and directive |
@@ -22,3 +22,5 @@ npm run typecheck
 ```
 
 See each package README for integration examples. Tracking is disabled until consent is granted unless `consent: "granted"` is configured.
+
+Each event has an `eventType` identifying exactly what was recorded and an optional developer-defined `customKeys` JSON object for business grouping.

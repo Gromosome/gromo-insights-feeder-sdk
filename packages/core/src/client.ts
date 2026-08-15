@@ -1,5 +1,5 @@
 import { EventStore, persistentId } from "./storage.js";
-import type { ConsentState, InsightEvent, InsightsConfig, ObserveOptions, TrackOptions, EventName } from "./types.js";
+import type { ConsentState, DOMTrackOptions, EventType, InsightEvent, InsightsConfig, ObserveOptions, TrackOptions } from "./types.js";
 
 const defaults = { flushIntervalMs: 5000, batchSize: 20, storageKey: "gromo.insights.events", redactText: true };
 
@@ -24,9 +24,9 @@ export class InsightsClient {
   }
 
   setConsent(state: ConsentState): void { this.consent = state; if (state === "denied") this.store.write([]); }
-  track(name: EventName, options: TrackOptions = {}): InsightEvent | undefined {
+  track(eventType: EventType, options: TrackOptions = {}): InsightEvent | undefined {
     if (this.consent !== "granted") return;
-    const event: InsightEvent = { id: crypto.randomUUID(), name, siteId: this.config.siteId, sessionId: this.sessionId, visitorId: this.visitorId, occurredAt: new Date().toISOString(), page: { url: location.href, path: location.pathname, title: document.title, referrer: document.referrer || undefined }, ...options };
+    const event: InsightEvent = { id: crypto.randomUUID(), eventType, siteId: this.config.siteId, sessionId: this.sessionId, visitorId: this.visitorId, occurredAt: new Date().toISOString(), page: { url: location.href, path: location.pathname, title: document.title, referrer: document.referrer || undefined }, ...options };
     const queue = this.store.append(event);
     if (this.config.debug) console.debug("[Gromo Insights]", event);
     if (queue.length >= this.config.batchSize) void this.flush();
@@ -35,28 +35,67 @@ export class InsightsClient {
   pageView(properties?: Record<string, unknown>): void { this.track("page_view", { properties }); }
   custom(event: string, properties?: Record<string, unknown>): void { this.track("custom", { properties: { event, ...properties } }); }
 
+  trackDOMEvents(element: Element, options: DOMTrackOptions): () => void {
+    const listeners = options.events.map(domEventType => {
+      const listener = (nativeEvent: Event) => this.track(
+        `${element.tagName.toLowerCase()}.${nativeEvent.type}`,
+        { componentId: options.componentId, customKeys: options.customKeys, properties: { domEventType: nativeEvent.type } }
+      );
+      element.addEventListener(domEventType, listener);
+      return { domEventType, listener };
+    });
+    const dispose = () => listeners.forEach(({ domEventType, listener }) => element.removeEventListener(domEventType, listener));
+    this.disposers.push(dispose);
+    return dispose;
+  }
+
+  trackMedia(element: HTMLVideoElement | HTMLAudioElement, componentId: string, customKeys?: Record<string, unknown>): () => void {
+    const mediaType = element instanceof HTMLVideoElement ? "video" : "audio";
+    const milestones = new Set<number>();
+    const disposeEvents = this.trackDOMEvents(element, { componentId, customKeys, events: ["play", "pause", "ended", "seeking", "volumechange"] });
+    const progress = () => {
+      if (!Number.isFinite(element.duration) || element.duration <= 0) return;
+      const percentage = Math.floor((element.currentTime / element.duration) * 100);
+      for (const milestone of [25, 50, 75, 100]) {
+        if (percentage >= milestone && !milestones.has(milestone)) {
+          milestones.add(milestone);
+          this.track(`${mediaType}.progress`, { componentId, customKeys, durationMs: Math.round(element.currentTime * 1000), properties: { milestone, durationSeconds: element.duration } });
+        }
+      }
+    };
+    element.addEventListener("timeupdate", progress);
+    const dispose = () => { element.removeEventListener("timeupdate", progress); disposeEvents(); };
+    this.disposers.push(dispose);
+    return dispose;
+  }
+
   observe(element: Element, componentId: string, options: ObserveOptions = {}): () => void {
     const started = new Map<Element, number>();
     const threshold = options.threshold ?? 0.5;
     const observer = new IntersectionObserver(entries => entries.forEach(entry => {
-      if (entry.isIntersecting && entry.intersectionRatio >= threshold) { if (!started.has(entry.target)) { started.set(entry.target, performance.now()); this.track("impression", { componentId }); } }
-      else { const start = started.get(entry.target); if (start !== undefined) { this.track("dwell", { componentId, durationMs: Math.round(performance.now() - start) }); started.delete(entry.target); } }
+      if (entry.isIntersecting && entry.intersectionRatio >= threshold) { if (!started.has(entry.target)) { started.set(entry.target, performance.now()); this.track("impression", { componentId, customKeys: options.customKeys }); } }
+      else { const start = started.get(entry.target); if (start !== undefined) { this.track("dwell", { componentId, customKeys: options.customKeys, durationMs: Math.round(performance.now() - start) }); started.delete(entry.target); } }
     }), { threshold: [threshold] });
     observer.observe(element);
-    const onClick = () => this.track("click", { componentId });
-    const onPointer = (e: Event) => { const p = e as PointerEvent; this.track("pointer", { componentId, position: { x: p.clientX, y: p.clientY } }); };
+    const onClick = () => this.track("click", { componentId, customKeys: options.customKeys });
+    const onPointer = (e: Event) => { const p = e as PointerEvent; this.track("pointer", { componentId, customKeys: options.customKeys, position: { x: p.clientX, y: p.clientY } }); };
     if (options.trackClicks !== false) element.addEventListener("click", onClick);
     if (options.trackPointer) element.addEventListener("pointerdown", onPointer);
-    const dispose = () => { observer.disconnect(); element.removeEventListener("click", onClick); element.removeEventListener("pointerdown", onPointer); const start = started.get(element); if (options.trackDwell !== false && start !== undefined) this.track("dwell", { componentId, durationMs: Math.round(performance.now() - start) }); };
+    const dispose = () => { observer.disconnect(); element.removeEventListener("click", onClick); element.removeEventListener("pointerdown", onPointer); const start = started.get(element); if (options.trackDwell !== false && start !== undefined) this.track("dwell", { componentId, customKeys: options.customKeys, durationMs: Math.round(performance.now() - start) }); };
     this.disposers.push(dispose); return dispose;
   }
 
   startAutoTracking(): void {
     this.pageView();
-    const click = (e: MouseEvent) => { const el = (e.target as Element | null)?.closest<HTMLElement>("[data-gromo-id]"); if (el) this.track("click", { componentId: el.dataset.gromoId }); };
+    const declarative = Array.from(document.querySelectorAll<HTMLElement>("[data-gromo-event-type]")).map(element => this.trackDOMEvents(element, {
+      componentId: element.dataset.gromoId ?? element.id ?? element.tagName.toLowerCase(),
+      customKeys: parseCustomKeys(element.dataset.gromoCustomKeys),
+      events: (element.dataset.gromoEventType ?? "").split(",").map(value => value.trim()).filter(Boolean)
+    }));
+    const click = (e: MouseEvent) => { const el = (e.target as Element | null)?.closest<HTMLElement>("[data-gromo-id]:not([data-gromo-event-type])"); if (el) this.track("click", { componentId: el.dataset.gromoId, customKeys: parseCustomKeys(el.dataset.gromoCustomKeys) }); };
     const visibility = () => this.track("visibility", { properties: { state: document.visibilityState } });
     document.addEventListener("click", click); document.addEventListener("visibilitychange", visibility);
-    this.disposers.push(() => { document.removeEventListener("click", click); document.removeEventListener("visibilitychange", visibility); });
+    this.disposers.push(() => { document.removeEventListener("click", click); document.removeEventListener("visibilitychange", visibility); declarative.forEach(dispose => dispose()); });
     this.timer = window.setInterval(() => void this.flush(), this.config.flushIntervalMs);
     window.addEventListener("pagehide", this.flushOnExit);
   }
@@ -73,3 +112,9 @@ export class InsightsClient {
 }
 
 export const createInsights = (config: InsightsConfig): InsightsClient => new InsightsClient(config);
+
+function parseCustomKeys(value?: string): Record<string, unknown> | undefined {
+  if (!value) return;
+  try { const parsed: unknown = JSON.parse(value); return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : undefined; }
+  catch { return undefined; }
+}
