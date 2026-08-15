@@ -1,1 +1,15 @@
-{"name":"gromo-insights-feeder-sdk","private":true,"workspaces":["packages/*"],"scripts":{"build":"npm run build --workspaces","typecheck":"npm run typecheck --workspaces"},"devDependencies":{"typescript":"^5.9.0"},"engines":{"node":">=20"}}
+{
+  "name":"gromo-insights-feeder-sdk",
+  "private":true,
+  "workspaces":["packages/*"],
+  "scripts":{
+    "build":"npm run build --workspaces",
+    "typecheck":"npm run typecheck --workspaces"
+  },
+  "devDependencies":{
+    "typescript":"^5.9.0"
+  },
+  "engines":{
+    "node":">=20"
+  }
+}

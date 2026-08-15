@@ -1,1 +1,21 @@
-{"name":"@gromosome/insights-react","version":"0.1.0","type":"module","main":"./dist/index.js","types":"./dist/index.d.ts","files":["dist","README.md"],"scripts":{"build":"tsc -p tsconfig.json","typecheck":"tsc -p tsconfig.json --noEmit"},"dependencies":{"@gromosome/insights-core":"0.1.0"},"peerDependencies":{"react":">=18"},"devDependencies":{"@types/react":"^19.0.0","react":"^19.0.0"},"license":"Apache-2.0"}
+{
+  "name":"@gromosome/insights-react",
+  "version":"0.1.0",
+  "type":"module",
+  "main":"./dist/index.js",
+  "types":"./dist/index.d.ts",
+  "files":["dist","README.md"],
+  "scripts":{
+    "build":"tsc -p tsconfig.json",
+    "typecheck":"tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies":{
+    "@gromosome/insights-core":"0.1.0"
+  },
+  "peerDependencies": {
+    "react":">=18"
+  },
+  "devDependencies":{
+    "@types/react":"^19.0.0",
+    "react":"^19.0.0"
+  },"license":"Apache-2.0"}
