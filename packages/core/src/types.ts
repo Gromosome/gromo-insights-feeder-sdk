@@ -23,12 +23,12 @@ export interface InsightEvent {
   occurredAt: string;
   page: { url: string; path: string; title: string; referrer?: string };
   componentId?: string;
-  customKey?: string;
+  customKeys?: Record<string, unknown>;
   durationMs?: number;
   position?: { x: number; y: number };
   properties?: Record<string, unknown>;
 }
 
-export interface TrackOptions { componentId?: string; customKey?: string; durationMs?: number; position?: { x: number; y: number }; properties?: Record<string, unknown> }
-export interface ObserveOptions { customKey?: string; threshold?: number; trackClicks?: boolean; trackPointer?: boolean; trackDwell?: boolean }
-export interface DOMTrackOptions { componentId: string; customKey?: string; events: string[] }
+export interface TrackOptions { componentId?: string; customKeys?: Record<string, unknown>; durationMs?: number; position?: { x: number; y: number }; properties?: Record<string, unknown> }
+export interface ObserveOptions { customKeys?: Record<string, unknown>; threshold?: number; trackClicks?: boolean; trackPointer?: boolean; trackDwell?: boolean }
+export interface DOMTrackOptions { componentId: string; customKeys?: Record<string, unknown>; events: string[] }

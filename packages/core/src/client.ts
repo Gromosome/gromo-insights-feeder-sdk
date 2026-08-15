@@ -39,7 +39,7 @@ export class InsightsClient {
     const listeners = options.events.map(domEventType => {
       const listener = (nativeEvent: Event) => this.track(
         `${element.tagName.toLowerCase()}.${nativeEvent.type}`,
-        { componentId: options.componentId, customKey: options.customKey, properties: { domEventType: nativeEvent.type } }
+        { componentId: options.componentId, customKeys: options.customKeys, properties: { domEventType: nativeEvent.type } }
       );
       element.addEventListener(domEventType, listener);
       return { domEventType, listener };
@@ -49,17 +49,17 @@ export class InsightsClient {
     return dispose;
   }
 
-  trackMedia(element: HTMLVideoElement | HTMLAudioElement, componentId: string, customKey?: string): () => void {
+  trackMedia(element: HTMLVideoElement | HTMLAudioElement, componentId: string, customKeys?: Record<string, unknown>): () => void {
     const mediaType = element instanceof HTMLVideoElement ? "video" : "audio";
     const milestones = new Set<number>();
-    const disposeEvents = this.trackDOMEvents(element, { componentId, customKey, events: ["play", "pause", "ended", "seeking", "volumechange"] });
+    const disposeEvents = this.trackDOMEvents(element, { componentId, customKeys, events: ["play", "pause", "ended", "seeking", "volumechange"] });
     const progress = () => {
       if (!Number.isFinite(element.duration) || element.duration <= 0) return;
       const percentage = Math.floor((element.currentTime / element.duration) * 100);
       for (const milestone of [25, 50, 75, 100]) {
         if (percentage >= milestone && !milestones.has(milestone)) {
           milestones.add(milestone);
-          this.track(`${mediaType}.progress`, { componentId, customKey, durationMs: Math.round(element.currentTime * 1000), properties: { milestone, durationSeconds: element.duration } });
+          this.track(`${mediaType}.progress`, { componentId, customKeys, durationMs: Math.round(element.currentTime * 1000), properties: { milestone, durationSeconds: element.duration } });
         }
       }
     };
@@ -73,15 +73,15 @@ export class InsightsClient {
     const started = new Map<Element, number>();
     const threshold = options.threshold ?? 0.5;
     const observer = new IntersectionObserver(entries => entries.forEach(entry => {
-      if (entry.isIntersecting && entry.intersectionRatio >= threshold) { if (!started.has(entry.target)) { started.set(entry.target, performance.now()); this.track("impression", { componentId, customKey: options.customKey }); } }
-      else { const start = started.get(entry.target); if (start !== undefined) { this.track("dwell", { componentId, customKey: options.customKey, durationMs: Math.round(performance.now() - start) }); started.delete(entry.target); } }
+      if (entry.isIntersecting && entry.intersectionRatio >= threshold) { if (!started.has(entry.target)) { started.set(entry.target, performance.now()); this.track("impression", { componentId, customKeys: options.customKeys }); } }
+      else { const start = started.get(entry.target); if (start !== undefined) { this.track("dwell", { componentId, customKeys: options.customKeys, durationMs: Math.round(performance.now() - start) }); started.delete(entry.target); } }
     }), { threshold: [threshold] });
     observer.observe(element);
-    const onClick = () => this.track("click", { componentId, customKey: options.customKey });
-    const onPointer = (e: Event) => { const p = e as PointerEvent; this.track("pointer", { componentId, customKey: options.customKey, position: { x: p.clientX, y: p.clientY } }); };
+    const onClick = () => this.track("click", { componentId, customKeys: options.customKeys });
+    const onPointer = (e: Event) => { const p = e as PointerEvent; this.track("pointer", { componentId, customKeys: options.customKeys, position: { x: p.clientX, y: p.clientY } }); };
     if (options.trackClicks !== false) element.addEventListener("click", onClick);
     if (options.trackPointer) element.addEventListener("pointerdown", onPointer);
-    const dispose = () => { observer.disconnect(); element.removeEventListener("click", onClick); element.removeEventListener("pointerdown", onPointer); const start = started.get(element); if (options.trackDwell !== false && start !== undefined) this.track("dwell", { componentId, customKey: options.customKey, durationMs: Math.round(performance.now() - start) }); };
+    const dispose = () => { observer.disconnect(); element.removeEventListener("click", onClick); element.removeEventListener("pointerdown", onPointer); const start = started.get(element); if (options.trackDwell !== false && start !== undefined) this.track("dwell", { componentId, customKeys: options.customKeys, durationMs: Math.round(performance.now() - start) }); };
     this.disposers.push(dispose); return dispose;
   }
 
@@ -89,10 +89,10 @@ export class InsightsClient {
     this.pageView();
     const declarative = Array.from(document.querySelectorAll<HTMLElement>("[data-gromo-event-type]")).map(element => this.trackDOMEvents(element, {
       componentId: element.dataset.gromoId ?? element.id ?? element.tagName.toLowerCase(),
-      customKey: element.dataset.gromoCustomKey,
+      customKeys: parseCustomKeys(element.dataset.gromoCustomKeys),
       events: (element.dataset.gromoEventType ?? "").split(",").map(value => value.trim()).filter(Boolean)
     }));
-    const click = (e: MouseEvent) => { const el = (e.target as Element | null)?.closest<HTMLElement>("[data-gromo-id]:not([data-gromo-event-type])"); if (el) this.track("click", { componentId: el.dataset.gromoId, customKey: el.dataset.gromoCustomKey }); };
+    const click = (e: MouseEvent) => { const el = (e.target as Element | null)?.closest<HTMLElement>("[data-gromo-id]:not([data-gromo-event-type])"); if (el) this.track("click", { componentId: el.dataset.gromoId, customKeys: parseCustomKeys(el.dataset.gromoCustomKeys) }); };
     const visibility = () => this.track("visibility", { properties: { state: document.visibilityState } });
     document.addEventListener("click", click); document.addEventListener("visibilitychange", visibility);
     this.disposers.push(() => { document.removeEventListener("click", click); document.removeEventListener("visibilitychange", visibility); declarative.forEach(dispose => dispose()); });
@@ -112,3 +112,9 @@ export class InsightsClient {
 }
 
 export const createInsights = (config: InsightsConfig): InsightsClient => new InsightsClient(config);
+
+function parseCustomKeys(value?: string): Record<string, unknown> | undefined {
+  if (!value) return;
+  try { const parsed: unknown = JSON.parse(value); return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : undefined; }
+  catch { return undefined; }
+}

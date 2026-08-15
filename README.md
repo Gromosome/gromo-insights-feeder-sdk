@@ -23,4 +23,4 @@ npm run typecheck
 
 See each package README for integration examples. Tracking is disabled until consent is granted unless `consent: "granted"` is configured.
 
-Each event has an `eventType` identifying exactly what was recorded and an optional developer-defined `customKey` for business grouping.
+Each event has an `eventType` identifying exactly what was recorded and an optional developer-defined `customKeys` JSON object for business grouping.

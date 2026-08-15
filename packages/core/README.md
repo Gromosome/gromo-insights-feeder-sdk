@@ -10,16 +10,16 @@ insights.startAutoTracking();
 insights.observe(document.querySelector("#pricing")!, "pricing-card");
 
 const video = document.querySelector("video")!;
-insights.trackMedia(video, "hero-video", "marketing-content");
+insights.trackMedia(video, "hero-video", { contentGroup: "marketing", campaignId: "summer-2026" });
 
 insights.trackDOMEvents(document.querySelector("#download")!, {
   componentId: "download",
-  customKey: "lead-generation",
+  customKeys: { funnel: "lead-generation", placement: "header" },
   events: ["click", "focus", "blur"]
 });
 ```
 
-Every feed contains an explicit `eventType` such as `video.play`, `audio.pause`, or `button.click`. Developers can set `customKey` to group events by their own business category.
+Every feed contains an explicit `eventType`. Developers can attach any JSON object through `customKeys`; the server keeps the full object and can promote configured keys into typed report columns.
 
 Declarative HTML works for any native event:
 
@@ -27,6 +27,6 @@ Declarative HTML works for any native event:
 <video
   data-gromo-id="course-introduction"
   data-gromo-event-type="play,pause,ended"
-  data-gromo-custom-key="learning-content"
+  data-gromo-custom-keys='{"contentGroup":"learning","courseId":"go-101"}'
 ></video>
 ```
