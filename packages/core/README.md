@@ -20,3 +20,13 @@ insights.trackDOMEvents(document.querySelector("#download")!, {
 ```
 
 Every feed contains an explicit `eventType` such as `video.play`, `audio.pause`, or `button.click`. Developers can set `customKey` to group events by their own business category.
+
+Declarative HTML works for any native event:
+
+```html
+<video
+  data-gromo-id="course-introduction"
+  data-gromo-event-type="play,pause,ended"
+  data-gromo-custom-key="learning-content"
+></video>
+```

@@ -30,5 +30,5 @@ export interface InsightEvent {
 }
 
 export interface TrackOptions { componentId?: string; customKey?: string; durationMs?: number; position?: { x: number; y: number }; properties?: Record<string, unknown> }
-export interface ObserveOptions { threshold?: number; trackClicks?: boolean; trackPointer?: boolean; trackDwell?: boolean }
+export interface ObserveOptions { customKey?: string; threshold?: number; trackClicks?: boolean; trackPointer?: boolean; trackDwell?: boolean }
 export interface DOMTrackOptions { componentId: string; customKey?: string; events: string[] }

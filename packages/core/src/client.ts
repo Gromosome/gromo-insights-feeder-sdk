@@ -73,24 +73,29 @@ export class InsightsClient {
     const started = new Map<Element, number>();
     const threshold = options.threshold ?? 0.5;
     const observer = new IntersectionObserver(entries => entries.forEach(entry => {
-      if (entry.isIntersecting && entry.intersectionRatio >= threshold) { if (!started.has(entry.target)) { started.set(entry.target, performance.now()); this.track("impression", { componentId }); } }
-      else { const start = started.get(entry.target); if (start !== undefined) { this.track("dwell", { componentId, durationMs: Math.round(performance.now() - start) }); started.delete(entry.target); } }
+      if (entry.isIntersecting && entry.intersectionRatio >= threshold) { if (!started.has(entry.target)) { started.set(entry.target, performance.now()); this.track("impression", { componentId, customKey: options.customKey }); } }
+      else { const start = started.get(entry.target); if (start !== undefined) { this.track("dwell", { componentId, customKey: options.customKey, durationMs: Math.round(performance.now() - start) }); started.delete(entry.target); } }
     }), { threshold: [threshold] });
     observer.observe(element);
-    const onClick = () => this.track("click", { componentId });
-    const onPointer = (e: Event) => { const p = e as PointerEvent; this.track("pointer", { componentId, position: { x: p.clientX, y: p.clientY } }); };
+    const onClick = () => this.track("click", { componentId, customKey: options.customKey });
+    const onPointer = (e: Event) => { const p = e as PointerEvent; this.track("pointer", { componentId, customKey: options.customKey, position: { x: p.clientX, y: p.clientY } }); };
     if (options.trackClicks !== false) element.addEventListener("click", onClick);
     if (options.trackPointer) element.addEventListener("pointerdown", onPointer);
-    const dispose = () => { observer.disconnect(); element.removeEventListener("click", onClick); element.removeEventListener("pointerdown", onPointer); const start = started.get(element); if (options.trackDwell !== false && start !== undefined) this.track("dwell", { componentId, durationMs: Math.round(performance.now() - start) }); };
+    const dispose = () => { observer.disconnect(); element.removeEventListener("click", onClick); element.removeEventListener("pointerdown", onPointer); const start = started.get(element); if (options.trackDwell !== false && start !== undefined) this.track("dwell", { componentId, customKey: options.customKey, durationMs: Math.round(performance.now() - start) }); };
     this.disposers.push(dispose); return dispose;
   }
 
   startAutoTracking(): void {
     this.pageView();
-    const click = (e: MouseEvent) => { const el = (e.target as Element | null)?.closest<HTMLElement>("[data-gromo-id]"); if (el) this.track("click", { componentId: el.dataset.gromoId }); };
+    const declarative = Array.from(document.querySelectorAll<HTMLElement>("[data-gromo-event-type]")).map(element => this.trackDOMEvents(element, {
+      componentId: element.dataset.gromoId ?? element.id ?? element.tagName.toLowerCase(),
+      customKey: element.dataset.gromoCustomKey,
+      events: (element.dataset.gromoEventType ?? "").split(",").map(value => value.trim()).filter(Boolean)
+    }));
+    const click = (e: MouseEvent) => { const el = (e.target as Element | null)?.closest<HTMLElement>("[data-gromo-id]:not([data-gromo-event-type])"); if (el) this.track("click", { componentId: el.dataset.gromoId, customKey: el.dataset.gromoCustomKey }); };
     const visibility = () => this.track("visibility", { properties: { state: document.visibilityState } });
     document.addEventListener("click", click); document.addEventListener("visibilitychange", visibility);
-    this.disposers.push(() => { document.removeEventListener("click", click); document.removeEventListener("visibilitychange", visibility); });
+    this.disposers.push(() => { document.removeEventListener("click", click); document.removeEventListener("visibilitychange", visibility); declarative.forEach(dispose => dispose()); });
     this.timer = window.setInterval(() => void this.flush(), this.config.flushIntervalMs);
     window.addEventListener("pagehide", this.flushOnExit);
   }
