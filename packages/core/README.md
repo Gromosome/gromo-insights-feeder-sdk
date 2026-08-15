@@ -8,4 +8,15 @@ import { createInsights } from "@gromosome/insights-core";
 const insights = createInsights({ endpoint: "https://insights.example.com/v1/feeds", siteId: "store", consent: "granted" });
 insights.startAutoTracking();
 insights.observe(document.querySelector("#pricing")!, "pricing-card");
+
+const video = document.querySelector("video")!;
+insights.trackMedia(video, "hero-video", "marketing-content");
+
+insights.trackDOMEvents(document.querySelector("#download")!, {
+  componentId: "download",
+  customKey: "lead-generation",
+  events: ["click", "focus", "blur"]
+});
 ```
+
+Every feed contains an explicit `eventType` such as `video.play`, `audio.pause`, or `button.click`. Developers can set `customKey` to group events by their own business category.

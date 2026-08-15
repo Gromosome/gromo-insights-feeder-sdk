@@ -1,5 +1,5 @@
 import { EventStore, persistentId } from "./storage.js";
-import type { ConsentState, InsightEvent, InsightsConfig, ObserveOptions, TrackOptions, EventName } from "./types.js";
+import type { ConsentState, DOMTrackOptions, EventType, InsightEvent, InsightsConfig, ObserveOptions, TrackOptions } from "./types.js";
 
 const defaults = { flushIntervalMs: 5000, batchSize: 20, storageKey: "gromo.insights.events", redactText: true };
 
@@ -24,9 +24,9 @@ export class InsightsClient {
   }
 
   setConsent(state: ConsentState): void { this.consent = state; if (state === "denied") this.store.write([]); }
-  track(name: EventName, options: TrackOptions = {}): InsightEvent | undefined {
+  track(eventType: EventType, options: TrackOptions = {}): InsightEvent | undefined {
     if (this.consent !== "granted") return;
-    const event: InsightEvent = { id: crypto.randomUUID(), name, siteId: this.config.siteId, sessionId: this.sessionId, visitorId: this.visitorId, occurredAt: new Date().toISOString(), page: { url: location.href, path: location.pathname, title: document.title, referrer: document.referrer || undefined }, ...options };
+    const event: InsightEvent = { id: crypto.randomUUID(), eventType, siteId: this.config.siteId, sessionId: this.sessionId, visitorId: this.visitorId, occurredAt: new Date().toISOString(), page: { url: location.href, path: location.pathname, title: document.title, referrer: document.referrer || undefined }, ...options };
     const queue = this.store.append(event);
     if (this.config.debug) console.debug("[Gromo Insights]", event);
     if (queue.length >= this.config.batchSize) void this.flush();
@@ -34,6 +34,40 @@ export class InsightsClient {
   }
   pageView(properties?: Record<string, unknown>): void { this.track("page_view", { properties }); }
   custom(event: string, properties?: Record<string, unknown>): void { this.track("custom", { properties: { event, ...properties } }); }
+
+  trackDOMEvents(element: Element, options: DOMTrackOptions): () => void {
+    const listeners = options.events.map(domEventType => {
+      const listener = (nativeEvent: Event) => this.track(
+        `${element.tagName.toLowerCase()}.${nativeEvent.type}`,
+        { componentId: options.componentId, customKey: options.customKey, properties: { domEventType: nativeEvent.type } }
+      );
+      element.addEventListener(domEventType, listener);
+      return { domEventType, listener };
+    });
+    const dispose = () => listeners.forEach(({ domEventType, listener }) => element.removeEventListener(domEventType, listener));
+    this.disposers.push(dispose);
+    return dispose;
+  }
+
+  trackMedia(element: HTMLVideoElement | HTMLAudioElement, componentId: string, customKey?: string): () => void {
+    const mediaType = element instanceof HTMLVideoElement ? "video" : "audio";
+    const milestones = new Set<number>();
+    const disposeEvents = this.trackDOMEvents(element, { componentId, customKey, events: ["play", "pause", "ended", "seeking", "volumechange"] });
+    const progress = () => {
+      if (!Number.isFinite(element.duration) || element.duration <= 0) return;
+      const percentage = Math.floor((element.currentTime / element.duration) * 100);
+      for (const milestone of [25, 50, 75, 100]) {
+        if (percentage >= milestone && !milestones.has(milestone)) {
+          milestones.add(milestone);
+          this.track(`${mediaType}.progress`, { componentId, customKey, durationMs: Math.round(element.currentTime * 1000), properties: { milestone, durationSeconds: element.duration } });
+        }
+      }
+    };
+    element.addEventListener("timeupdate", progress);
+    const dispose = () => { element.removeEventListener("timeupdate", progress); disposeEvents(); };
+    this.disposers.push(dispose);
+    return dispose;
+  }
 
   observe(element: Element, componentId: string, options: ObserveOptions = {}): () => void {
     const started = new Map<Element, number>();
